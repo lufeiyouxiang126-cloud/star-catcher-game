@@ -171,6 +171,76 @@
       font-size: 13px;
     }
 
+    .leaderboard {
+      margin: 18px 0 0;
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+      text-align: left;
+    }
+
+    .leaderboard-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .rank-list {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .rank-list li {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 34px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 7px 9px;
+      color: #eaf4ff;
+      font-size: 14px;
+    }
+
+    .rank-list li:first-child {
+      border-color: rgba(255, 209, 102, 0.42);
+      background: rgba(255, 209, 102, 0.11);
+    }
+
+    .rank-score {
+      color: var(--gold);
+      font-weight: 850;
+    }
+
+    .rank-date {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini-button {
+      border: 0;
+      background: transparent;
+      color: var(--cyan);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .mini-button:hover,
+    .mini-button:focus-visible {
+      text-decoration: underline;
+      outline: 0;
+    }
+
     .hidden {
       display: none;
     }
@@ -225,6 +295,10 @@
           <span class="label">连击</span>
           <span class="value" id="combo">x1</span>
         </div>
+        <div class="pill">
+          <span class="label">最高</span>
+          <span class="value" id="best">0</span>
+        </div>
       </div>
       <button class="button" id="pause" type="button" aria-label="暂停或继续游戏">暂停</button>
     </section>
@@ -233,6 +307,13 @@
         <h1>星际拾光者</h1>
         <p id="message">驾驶小飞船收集星光，躲开陨石。连击越高，分数越香。</p>
         <button class="button primary" id="start" type="button">开始游戏</button>
+        <div class="leaderboard" aria-label="本机排行榜">
+          <div class="leaderboard-title">
+            <span>本机排行榜</span>
+            <button class="mini-button" id="clearRanks" type="button">清空</button>
+          </div>
+          <ol class="rank-list" id="rankList"></ol>
+        </div>
         <div class="tips">方向键 / WASD 移动，空格暂停。手机上拖动飞船即可。</div>
       </div>
     </section>
@@ -244,10 +325,15 @@
     const scoreEl = document.querySelector("#score");
     const livesEl = document.querySelector("#lives");
     const comboEl = document.querySelector("#combo");
+    const bestEl = document.querySelector("#best");
     const overlay = document.querySelector("#overlay");
     const message = document.querySelector("#message");
     const startButton = document.querySelector("#start");
     const pauseButton = document.querySelector("#pause");
+    const rankList = document.querySelector("#rankList");
+    const clearRanksButton = document.querySelector("#clearRanks");
+
+    const rankKey = "star-catcher-ranks-v1";
 
     const keys = new Set();
     const state = {
@@ -316,6 +402,52 @@
       scoreEl.textContent = state.score;
       livesEl.textContent = state.lives;
       comboEl.textContent = `x${state.combo}`;
+      bestEl.textContent = getRanks()[0]?.score || 0;
+    }
+
+    function getRanks() {
+      try {
+        const ranks = JSON.parse(localStorage.getItem(rankKey) || "[]");
+        return Array.isArray(ranks) ? ranks.filter((item) => Number.isFinite(item.score)) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveRank(score) {
+      const ranks = getRanks();
+      ranks.push({
+        score,
+        date: new Date().toLocaleDateString("zh-CN", {
+          month: "2-digit",
+          day: "2-digit"
+        })
+      });
+      ranks.sort((a, b) => b.score - a.score);
+      localStorage.setItem(rankKey, JSON.stringify(ranks.slice(0, 5)));
+      renderRanks();
+    }
+
+    function renderRanks() {
+      const ranks = getRanks();
+      rankList.innerHTML = "";
+      if (ranks.length === 0) {
+        const empty = document.createElement("li");
+        empty.innerHTML = "<span>#</span><span>还没有成绩</span><span class=\"rank-date\">开一局</span>";
+        rankList.append(empty);
+        bestEl.textContent = "0";
+        return;
+      }
+      ranks.forEach((rank, index) => {
+        const item = document.createElement("li");
+        item.innerHTML = `
+          <span>#${index + 1}</span>
+          <span class="rank-score">${rank.score}</span>
+          <span class="rank-date">${rank.date || ""}</span>
+        `;
+        rankList.append(item);
+      });
+      bestEl.textContent = ranks[0].score;
     }
 
     function rand(min, max) {
@@ -575,6 +707,7 @@
 
     function endGame() {
       state.running = false;
+      saveRank(state.score);
       overlay.classList.remove("hidden");
       message.textContent = `本局得分 ${state.score}。再来一把，手感会更顺。`;
       startButton.textContent = "再玩一次";
@@ -605,8 +738,14 @@
       }
     });
     pauseButton.addEventListener("click", togglePause);
+    clearRanksButton.addEventListener("click", () => {
+      localStorage.removeItem(rankKey);
+      renderRanks();
+      updateHud();
+    });
 
     resize();
+    renderRanks();
     requestAnimationFrame(loop);
   </script>
 </body>
