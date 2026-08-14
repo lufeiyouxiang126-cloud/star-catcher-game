@@ -189,6 +189,34 @@
       font-weight: 750;
     }
 
+    .name-field {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .name-field input {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: rgba(4, 10, 24, 0.46);
+      color: var(--text);
+      font: inherit;
+      padding: 8px 10px;
+      outline: 0;
+    }
+
+    .name-field input:focus {
+      border-color: rgba(0, 209, 255, 0.65);
+      box-shadow: 0 0 0 3px rgba(0, 209, 255, 0.14);
+    }
+
     .rank-list {
       display: grid;
       gap: 7px;
@@ -307,11 +335,15 @@
         <h1>星际拾光者</h1>
         <p id="message">驾驶小飞船收集星光，躲开陨石。连击越高，分数越香。</p>
         <button class="button primary" id="start" type="button">开始游戏</button>
-        <div class="leaderboard" aria-label="本机排行榜">
+        <div class="leaderboard" aria-label="全网排行榜">
           <div class="leaderboard-title">
-            <span>本机排行榜</span>
-            <button class="mini-button" id="clearRanks" type="button">清空</button>
+            <span>全网排行榜</span>
+            <button class="mini-button" id="refreshRanks" type="button">刷新</button>
           </div>
+          <label class="name-field">
+            <span>昵称</span>
+            <input id="playerName" maxlength="16" autocomplete="nickname" aria-label="排行榜昵称" />
+          </label>
           <ol class="rank-list" id="rankList"></ol>
         </div>
         <div class="tips">方向键 / WASD 移动，空格暂停。手机上拖动飞船即可。</div>
@@ -331,9 +363,11 @@
     const startButton = document.querySelector("#start");
     const pauseButton = document.querySelector("#pause");
     const rankList = document.querySelector("#rankList");
-    const clearRanksButton = document.querySelector("#clearRanks");
+    const refreshRanksButton = document.querySelector("#refreshRanks");
+    const playerNameInput = document.querySelector("#playerName");
 
-    const rankKey = "star-catcher-ranks-v1";
+    const leaderboardApi = "https://star-catcher-game.lingz20581.chatgpt.site/api/leaderboard";
+    const playerNameKey = "star-catcher-player-name-v1";
 
     const keys = new Set();
     const state = {
@@ -402,52 +436,86 @@
       scoreEl.textContent = state.score;
       livesEl.textContent = state.lives;
       comboEl.textContent = `x${state.combo}`;
-      bestEl.textContent = getRanks()[0]?.score || 0;
     }
 
-    function getRanks() {
+    function getPlayerName() {
+      const value = playerNameInput.value.trim().replace(/\s+/g, " ").slice(0, 16);
+      const name = value || `玩家${Math.floor(Math.random() * 9000 + 1000)}`;
+      playerNameInput.value = name;
       try {
-        const ranks = JSON.parse(localStorage.getItem(rankKey) || "[]");
-        return Array.isArray(ranks) ? ranks.filter((item) => Number.isFinite(item.score)) : [];
+        localStorage.setItem(playerNameKey, name);
       } catch {
-        return [];
+        // Ignore private browsing storage errors; the score can still be submitted.
       }
+      return name;
     }
 
-    function saveRank(score) {
-      const ranks = getRanks();
-      ranks.push({
-        score,
-        date: new Date().toLocaleDateString("zh-CN", {
-          month: "2-digit",
-          day: "2-digit"
-        })
-      });
-      ranks.sort((a, b) => b.score - a.score);
-      localStorage.setItem(rankKey, JSON.stringify(ranks.slice(0, 5)));
-      renderRanks();
+    async function fetchRanks() {
+      const response = await fetch(`${leaderboardApi}?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("leaderboard unavailable");
+      const data = await response.json();
+      return Array.isArray(data.scores) ? data.scores : [];
     }
 
-    function renderRanks() {
-      const ranks = getRanks();
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function paintRanks(ranks, fallbackText = "还没有成绩") {
       rankList.innerHTML = "";
       if (ranks.length === 0) {
         const empty = document.createElement("li");
-        empty.innerHTML = "<span>#</span><span>还没有成绩</span><span class=\"rank-date\">开一局</span>";
+        empty.innerHTML = `<span>#</span><span>${fallbackText}</span><span class="rank-date">开一局</span>`;
         rankList.append(empty);
         bestEl.textContent = "0";
         return;
       }
       ranks.forEach((rank, index) => {
         const item = document.createElement("li");
+        const date = rank.created_at ? String(rank.created_at).slice(5, 10) : "";
+        const name = escapeHtml(String(rank.name || "匿名玩家").slice(0, 16));
         item.innerHTML = `
           <span>#${index + 1}</span>
-          <span class="rank-score">${rank.score}</span>
-          <span class="rank-date">${rank.date || ""}</span>
+          <span><strong class="rank-score">${rank.score}</strong> ${name}</span>
+          <span class="rank-date">${date}</span>
         `;
         rankList.append(item);
       });
       bestEl.textContent = ranks[0].score;
+    }
+
+    async function renderRanks() {
+      rankList.innerHTML = "<li><span>#</span><span>正在同步全网榜...</span><span class=\"rank-date\">稍等</span></li>";
+      try {
+        paintRanks(await fetchRanks());
+      } catch {
+        paintRanks([], "全网排行榜暂时连接失败");
+      }
+    }
+
+    async function saveRank(score) {
+      if (score <= 0) {
+        await renderRanks();
+        return;
+      }
+      try {
+        const response = await fetch(leaderboardApi, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: getPlayerName(), score })
+        });
+        if (!response.ok) throw new Error("score submit failed");
+        const data = await response.json();
+        paintRanks(Array.isArray(data.scores) ? data.scores : []);
+      } catch {
+        paintRanks([], "成绩提交失败，稍后再试");
+      }
     }
 
     function rand(min, max) {
@@ -707,11 +775,13 @@
 
     function endGame() {
       state.running = false;
-      saveRank(state.score);
       overlay.classList.remove("hidden");
-      message.textContent = `本局得分 ${state.score}。再来一把，手感会更顺。`;
+      message.textContent = `本局得分 ${state.score}。正在提交全网排行榜。`;
       startButton.textContent = "再玩一次";
       pauseButton.textContent = "暂停";
+      saveRank(state.score).then(() => {
+        message.textContent = `本局得分 ${state.score}。全网榜已更新，再来一把冲更高。`;
+      });
     }
 
     window.addEventListener("resize", resize);
@@ -738,11 +808,15 @@
       }
     });
     pauseButton.addEventListener("click", togglePause);
-    clearRanksButton.addEventListener("click", () => {
-      localStorage.removeItem(rankKey);
-      renderRanks();
-      updateHud();
-    });
+    refreshRanksButton.addEventListener("click", renderRanks);
+    playerNameInput.addEventListener("change", getPlayerName);
+
+    try {
+      playerNameInput.value = localStorage.getItem(playerNameKey) || "";
+    } catch {
+      playerNameInput.value = "";
+    }
+    getPlayerName();
 
     resize();
     renderRanks();
