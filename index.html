@@ -105,6 +105,15 @@
       line-height: 1;
     }
 
+    .power-pill {
+      min-width: 136px;
+    }
+
+    .power-pill .value {
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
     .button {
       pointer-events: auto;
       border-radius: 8px;
@@ -295,6 +304,10 @@
         padding: 8px 9px;
       }
 
+      .power-pill {
+        min-width: 128px;
+      }
+
       .value {
         font-size: 18px;
       }
@@ -327,6 +340,10 @@
           <span class="label">最高</span>
           <span class="value" id="best">0</span>
         </div>
+        <div class="pill power-pill">
+          <span class="label">状态</span>
+          <span class="value" id="power">普通</span>
+        </div>
       </div>
       <button class="button" id="pause" type="button" aria-label="暂停或继续游戏">暂停</button>
     </section>
@@ -358,6 +375,7 @@
     const livesEl = document.querySelector("#lives");
     const comboEl = document.querySelector("#combo");
     const bestEl = document.querySelector("#best");
+    const powerEl = document.querySelector("#power");
     const overlay = document.querySelector("#overlay");
     const message = document.querySelector("#message");
     const startButton = document.querySelector("#start");
@@ -383,6 +401,8 @@
       spawnStar: 0,
       spawnRock: 0,
       shake: 0,
+      invincible: 0,
+      magnet: 0,
       ship: { x: 0, y: 0, r: 18, vx: 0, vy: 0 },
       stars: [],
       rocks: [],
@@ -423,6 +443,8 @@
       state.spawnStar = 0;
       state.spawnRock = 0;
       state.shake = 0;
+      state.invincible = 0;
+      state.magnet = 0;
       state.stars = [];
       state.rocks = [];
       state.sparks = [];
@@ -436,6 +458,10 @@
       scoreEl.textContent = state.score;
       livesEl.textContent = state.lives;
       comboEl.textContent = `x${state.combo}`;
+      const powers = [];
+      if (state.invincible > 0) powers.push(`无敌 ${Math.ceil(state.invincible)}s`);
+      if (state.magnet > 0) powers.push(`磁力 ${Math.ceil(state.magnet)}s`);
+      powerEl.textContent = powers.length ? powers.join(" · ") : "普通";
     }
 
     function getPlayerName() {
@@ -523,13 +549,24 @@
     }
 
     function spawnStar() {
+      const roll = Math.random();
+      let kind = "score";
+      let tone = Math.random() > 0.22 ? "gold" : "mint";
+      if (roll < 0.07) {
+        kind = "shield";
+        tone = "red";
+      } else if (roll < 0.15) {
+        kind = "magnet";
+        tone = "blue";
+      }
       state.stars.push({
         x: rand(28, state.width - 28),
         y: -24,
         r: rand(9, 15),
         speed: rand(76, 118) + state.time * 2,
         spin: rand(0, Math.PI * 2),
-        tone: Math.random() > 0.22 ? "gold" : "mint"
+        tone,
+        kind
       });
     }
 
@@ -566,6 +603,30 @@
       return dx * dx + dy * dy < rr * rr;
     }
 
+    function starColor(star) {
+      if (star.kind === "shield") return "#ef476f";
+      if (star.kind === "magnet") return "#4cc9f0";
+      return star.tone === "mint" ? "#06d6a0" : "#ffd166";
+    }
+
+    function collectStar(star) {
+      let bonus = star.tone === "mint" ? 25 : 10;
+      let sparks = 14;
+      if (star.kind === "shield") {
+        state.invincible = 10;
+        bonus = 15;
+        sparks = 24;
+      } else if (star.kind === "magnet") {
+        state.magnet = 10;
+        bonus = 15;
+        sparks = 24;
+      }
+      state.score += bonus * state.combo;
+      state.combo = Math.min(9, state.combo + 1);
+      burst(star.x, star.y, starColor(star), sparks);
+      updateHud();
+    }
+
     function moveShip(dt) {
       const ship = state.ship;
       let ax = 0;
@@ -592,6 +653,9 @@
       state.spawnStar -= dt;
       state.spawnRock -= dt;
       state.shake = Math.max(0, state.shake - dt * 18);
+      state.invincible = Math.max(0, state.invincible - dt);
+      state.magnet = Math.max(0, state.magnet - dt);
+      updateHud();
       if (state.spawnStar <= 0) {
         spawnStar();
         state.spawnStar = Math.max(0.22, 0.72 - state.time * 0.012);
@@ -611,6 +675,16 @@
       }
 
       for (const star of state.stars) {
+        if (state.magnet > 0) {
+          const dx = state.ship.x - star.x;
+          const dy = state.ship.y - star.y;
+          const distance = Math.hypot(dx, dy);
+          if (distance > 1 && distance < 178) {
+            const pull = (1 - distance / 178) * 620 + 150;
+            star.x += (dx / distance) * pull * dt;
+            star.y += (dy / distance) * pull * dt;
+          }
+        }
         star.y += star.speed * dt;
         star.spin += dt * 4.5;
       }
@@ -627,11 +701,7 @@
 
       state.stars = state.stars.filter((star) => {
         if (collide(state.ship, star)) {
-          const bonus = star.tone === "mint" ? 25 : 10;
-          state.score += bonus * state.combo;
-          state.combo = Math.min(9, state.combo + 1);
-          burst(star.x, star.y, star.tone === "mint" ? "#06d6a0" : "#ffd166", 14);
-          updateHud();
+          collectStar(star);
           return false;
         }
         if (star.y > state.height + 40) {
@@ -644,6 +714,13 @@
 
       state.rocks = state.rocks.filter((rock) => {
         if (collide(state.ship, rock)) {
+          if (state.invincible > 0) {
+            state.score += 15 * state.combo;
+            state.shake = 4;
+            burst(rock.x, rock.y, "#ffd166", 22);
+            updateHud();
+            return false;
+          }
           state.lives -= 1;
           state.combo = 1;
           state.shake = 10;
@@ -661,6 +738,29 @@
       const ship = state.ship;
       ctx.save();
       ctx.translate(ship.x, ship.y);
+      if (state.magnet > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.32 + Math.sin(state.time * 7) * 0.08;
+        ctx.strokeStyle = "#4cc9f0";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 12]);
+        ctx.beginPath();
+        ctx.arc(0, 0, 178, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (state.invincible > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.34 + Math.sin(state.time * 12) * 0.1;
+        ctx.fillStyle = "rgba(239, 71, 111, 0.22)";
+        ctx.strokeStyle = "#ef476f";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 36 + Math.sin(state.time * 8) * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.rotate(ship.vx * 0.002);
       ctx.fillStyle = "#f7fbff";
       ctx.strokeStyle = "rgba(76, 201, 240, 0.9)";
@@ -691,7 +791,7 @@
       ctx.save();
       ctx.translate(star.x, star.y);
       ctx.rotate(star.spin);
-      ctx.fillStyle = star.tone === "mint" ? "#06d6a0" : "#ffd166";
+      ctx.fillStyle = starColor(star);
       ctx.shadowColor = ctx.fillStyle;
       ctx.shadowBlur = 18;
       ctx.beginPath();
@@ -702,6 +802,13 @@
       }
       ctx.closePath();
       ctx.fill();
+      if (star.kind === "shield" || star.kind === "magnet") {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, star.r + 5 + Math.sin(state.time * 8) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
