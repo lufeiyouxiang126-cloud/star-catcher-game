@@ -406,7 +406,9 @@
       shake: 0,
       invincible: 0,
       magnet: 0,
+      magnetLevel: 0,
       blaster: 0,
+      blasterLevel: 0,
       fireCooldown: 0,
       ship: { x: 0, y: 0, r: 18, vx: 0, vy: 0 },
       stars: [],
@@ -455,7 +457,9 @@
       state.shake = 0;
       state.invincible = 0;
       state.magnet = 0;
+      state.magnetLevel = 0;
       state.blaster = 0;
+      state.blasterLevel = 0;
       state.fireCooldown = 0;
       state.stars = [];
       state.rocks = [];
@@ -473,8 +477,8 @@
       comboEl.textContent = `x${state.combo}`;
       const powers = [];
       if (state.invincible > 0) powers.push(`无敌 ${Math.ceil(state.invincible)}s`);
-      if (state.magnet > 0) powers.push(`磁力 ${Math.ceil(state.magnet)}s`);
-      if (state.blaster > 0) powers.push(`火力 ${Math.ceil(state.blaster)}s`);
+      if (state.magnet > 0) powers.push(`磁力Lv${state.magnetLevel} ${Math.ceil(state.magnet)}s`);
+      if (state.blaster > 0) powers.push(`火力Lv${state.blasterLevel} ${Math.ceil(state.blaster)}s`);
       powerEl.textContent = powers.length ? powers.join(" · ") : "普通";
     }
 
@@ -649,10 +653,12 @@
         bonus = 15;
         sparks = 24;
       } else if (star.kind === "magnet") {
+        state.magnetLevel = state.magnet > 0 ? Math.min(3, state.magnetLevel + 1) : 1;
         state.magnet = 10;
         bonus = 15;
         sparks = 24;
       } else if (star.kind === "blaster") {
+        state.blasterLevel = state.blaster > 0 ? Math.min(3, state.blasterLevel + 1) : 1;
         state.blaster = 10;
         state.fireCooldown = 0;
         bonus = 15;
@@ -685,12 +691,19 @@
     }
 
     function shootBullet() {
-      state.bullets.push({
-        x: state.ship.x,
-        y: state.ship.y - 26,
-        vy: -680,
-        r: 4
-      });
+      const level = Math.max(1, state.blasterLevel);
+      const offsets = level === 1 ? [0] : level === 2 ? [-7, 7] : [-11, 0, 11];
+      for (const offset of offsets) {
+        state.bullets.push({
+          x: state.ship.x + offset,
+          y: state.ship.y - 26,
+          vx: offset * 2.5,
+          vy: -680 - level * 70,
+          r: 4 + level * 0.6,
+          damage: level >= 3 ? 2 : 1,
+          level
+        });
+      }
     }
 
     function update(dt) {
@@ -704,11 +717,13 @@
       state.magnet = Math.max(0, state.magnet - dt);
       state.blaster = Math.max(0, state.blaster - dt);
       state.fireCooldown = Math.max(0, state.fireCooldown - dt);
+      if (state.magnet <= 0) state.magnetLevel = 0;
+      if (state.blaster <= 0) state.blasterLevel = 0;
       updateHud();
       while (state.powerTime >= state.nextPowerAt) {
         spawnStar(scheduledPowerKind());
         state.powerStep += 1;
-        state.nextPowerAt += 5;
+        state.nextPowerAt += 9;
       }
       if (state.spawnStar <= 0) {
         spawnStar();
@@ -721,7 +736,7 @@
       moveShip(dt);
       if (state.blaster > 0 && state.fireCooldown <= 0) {
         shootBullet();
-        state.fireCooldown = 0.18;
+        state.fireCooldown = Math.max(0.1, 0.21 - state.blasterLevel * 0.035);
       }
 
       for (const dust of state.dust) {
@@ -737,8 +752,9 @@
           const dx = state.ship.x - star.x;
           const dy = state.ship.y - star.y;
           const distance = Math.hypot(dx, dy);
-          if (distance > 1 && distance < 178) {
-            const pull = (1 - distance / 178) * 620 + 150;
+          const magnetRange = 160 + state.magnetLevel * 44;
+          if (distance > 1 && distance < magnetRange) {
+            const pull = (1 - distance / magnetRange) * (620 + state.magnetLevel * 260) + 150;
             star.x += (dx / distance) * pull * dt;
             star.y += (dy / distance) * pull * dt;
           }
@@ -751,6 +767,7 @@
         rock.angle += rock.spin * dt;
       }
       for (const bullet of state.bullets) {
+        bullet.x += (bullet.vx || 0) * dt;
         bullet.y += bullet.vy * dt;
       }
       for (const spark of state.sparks) {
@@ -768,7 +785,7 @@
         for (const rock of state.rocks) {
           if (rock.destroyed || !collide(bullet, rock)) continue;
           bullet.dead = true;
-          rock.hp -= 1;
+          rock.hp -= bullet.damage || 1;
           burst(bullet.x, bullet.y, "#b967ff", 6);
           if (rock.hp <= 0) destroyRock(rock, "#b967ff");
           break;
@@ -820,7 +837,7 @@
         ctx.lineWidth = 2;
         ctx.setLineDash([10, 12]);
         ctx.beginPath();
-        ctx.arc(0, 0, 178, 0, Math.PI * 2);
+        ctx.arc(0, 0, 160 + state.magnetLevel * 44, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -928,11 +945,11 @@
     function drawBullet(bullet) {
       ctx.save();
       ctx.translate(bullet.x, bullet.y);
-      ctx.fillStyle = "#f4d7ff";
+      ctx.fillStyle = bullet.level >= 3 ? "#ffffff" : "#f4d7ff";
       ctx.shadowColor = "#b967ff";
-      ctx.shadowBlur = 16;
+      ctx.shadowBlur = 12 + bullet.level * 5;
       ctx.beginPath();
-      ctx.ellipse(0, -3, 4, 12, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, -3, bullet.r, 10 + bullet.level * 3, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
