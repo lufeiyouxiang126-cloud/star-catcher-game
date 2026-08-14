@@ -400,14 +400,17 @@
       last: 0,
       spawnStar: 0,
       spawnRock: 0,
-      nextPowerAt: 30,
-      nextPowerKind: "shield",
+      nextPowerAt: 15,
+      powerStep: 0,
       shake: 0,
       invincible: 0,
       magnet: 0,
+      blaster: 0,
+      fireCooldown: 0,
       ship: { x: 0, y: 0, r: 18, vx: 0, vy: 0 },
       stars: [],
       rocks: [],
+      bullets: [],
       sparks: [],
       dust: []
     };
@@ -442,15 +445,19 @@
       state.lives = 3;
       state.combo = 1;
       state.time = 0;
+      state.last = performance.now();
       state.spawnStar = 0;
       state.spawnRock = 0;
-      state.nextPowerAt = 30;
-      state.nextPowerKind = "shield";
+      state.nextPowerAt = 15;
+      state.powerStep = 0;
       state.shake = 0;
       state.invincible = 0;
       state.magnet = 0;
+      state.blaster = 0;
+      state.fireCooldown = 0;
       state.stars = [];
       state.rocks = [];
+      state.bullets = [];
       state.sparks = [];
       state.ship = { x: state.width / 2, y: state.height * 0.72, r: 18, vx: 0, vy: 0 };
       overlay.classList.add("hidden");
@@ -465,6 +472,7 @@
       const powers = [];
       if (state.invincible > 0) powers.push(`无敌 ${Math.ceil(state.invincible)}s`);
       if (state.magnet > 0) powers.push(`磁力 ${Math.ceil(state.magnet)}s`);
+      if (state.blaster > 0) powers.push(`火力 ${Math.ceil(state.blaster)}s`);
       powerEl.textContent = powers.length ? powers.join(" · ") : "普通";
     }
 
@@ -552,20 +560,28 @@
       return Math.random() * (max - min) + min;
     }
 
+    function powerTone(kind) {
+      if (kind === "shield") return "red";
+      if (kind === "magnet") return "blue";
+      if (kind === "blaster") return "purple";
+      return "gold";
+    }
+
+    function scheduledPowerKind() {
+      if (state.nextPowerAt < 30) return "shield";
+      if (state.nextPowerAt < 45) return "magnet";
+      if (state.nextPowerAt < 60) return "blaster";
+      return ["shield", "magnet", "blaster"][state.powerStep % 3];
+    }
+
     function spawnStar() {
-      const roll = Math.random();
       let kind = "score";
       let tone = Math.random() > 0.22 ? "gold" : "mint";
-      if (state.time >= 30) {
-        if (state.time >= state.nextPowerAt) {
-          kind = state.nextPowerKind;
-          state.nextPowerKind = state.nextPowerKind === "shield" ? "magnet" : "shield";
-          state.nextPowerAt = state.time + rand(6, 9);
-        } else if (roll < 0.24) {
-          kind = roll < 0.12 ? "shield" : "magnet";
-        }
-        if (kind === "shield") tone = "red";
-        if (kind === "magnet") tone = "blue";
+      if (state.time >= state.nextPowerAt) {
+        kind = scheduledPowerKind();
+        tone = powerTone(kind);
+        state.powerStep += 1;
+        state.nextPowerAt += 5;
       }
       state.stars.push({
         x: rand(28, state.width - 28),
@@ -584,6 +600,7 @@
         x: rand(size, state.width - size),
         y: -38,
         r: size,
+        hp: 3,
         speed: rand(118, 178) + state.time * 3.2,
         spin: rand(-2.2, 2.2),
         angle: rand(0, Math.PI * 2)
@@ -614,7 +631,16 @@
     function starColor(star) {
       if (star.kind === "shield") return "#ef476f";
       if (star.kind === "magnet") return "#4cc9f0";
+      if (star.kind === "blaster") return "#b967ff";
       return star.tone === "mint" ? "#06d6a0" : "#ffd166";
+    }
+
+    function destroyRock(rock, color = "#ffd166") {
+      rock.destroyed = true;
+      state.score += 1000;
+      state.shake = Math.max(state.shake, 4);
+      burst(rock.x, rock.y, color, 28);
+      updateHud();
     }
 
     function collectStar(star) {
@@ -628,6 +654,11 @@
         state.magnet = 10;
         bonus = 15;
         sparks = 24;
+      } else if (star.kind === "blaster") {
+        state.blaster = 10;
+        state.fireCooldown = 0;
+        bonus = 15;
+        sparks = 28;
       }
       state.score += bonus * state.combo;
       state.combo = Math.min(9, state.combo + 1);
@@ -655,6 +686,15 @@
       ship.y = Math.max(92, Math.min(state.height - ship.r - 8, ship.y));
     }
 
+    function shootBullet() {
+      state.bullets.push({
+        x: state.ship.x,
+        y: state.ship.y - 26,
+        vy: -680,
+        r: 4
+      });
+    }
+
     function update(dt) {
       if (!state.running || state.paused) return;
       state.time += dt;
@@ -663,6 +703,8 @@
       state.shake = Math.max(0, state.shake - dt * 18);
       state.invincible = Math.max(0, state.invincible - dt);
       state.magnet = Math.max(0, state.magnet - dt);
+      state.blaster = Math.max(0, state.blaster - dt);
+      state.fireCooldown = Math.max(0, state.fireCooldown - dt);
       updateHud();
       if (state.spawnStar <= 0) {
         spawnStar();
@@ -673,6 +715,10 @@
         state.spawnRock = Math.max(0.42, 1.28 - state.time * 0.014);
       }
       moveShip(dt);
+      if (state.blaster > 0 && state.fireCooldown <= 0) {
+        shootBullet();
+        state.fireCooldown = 0.18;
+      }
 
       for (const dust of state.dust) {
         dust.y += dust.speed * dt;
@@ -700,11 +746,29 @@
         rock.y += rock.speed * dt;
         rock.angle += rock.spin * dt;
       }
+      for (const bullet of state.bullets) {
+        bullet.y += bullet.vy * dt;
+      }
       for (const spark of state.sparks) {
         spark.x += spark.vx * dt;
         spark.y += spark.vy * dt;
         spark.vy += 220 * dt;
         spark.life -= dt;
+      }
+
+      for (const bullet of state.bullets) {
+        if (bullet.y < -24) {
+          bullet.dead = true;
+          continue;
+        }
+        for (const rock of state.rocks) {
+          if (rock.destroyed || !collide(bullet, rock)) continue;
+          bullet.dead = true;
+          rock.hp -= 1;
+          burst(bullet.x, bullet.y, "#b967ff", 6);
+          if (rock.hp <= 0) destroyRock(rock, "#b967ff");
+          break;
+        }
       }
 
       state.stars = state.stars.filter((star) => {
@@ -721,12 +785,10 @@
       });
 
       state.rocks = state.rocks.filter((rock) => {
+        if (rock.destroyed) return false;
         if (collide(state.ship, rock)) {
           if (state.invincible > 0) {
-            state.score += 15 * state.combo;
-            state.shake = 4;
-            burst(rock.x, rock.y, "#ffd166", 22);
-            updateHud();
+            destroyRock(rock, "#ffd166");
             return false;
           }
           state.lives -= 1;
@@ -739,6 +801,7 @@
         }
         return rock.y < state.height + 54;
       });
+      state.bullets = state.bullets.filter((bullet) => !bullet.dead);
       state.sparks = state.sparks.filter((spark) => spark.life > 0);
     }
 
@@ -766,6 +829,16 @@
         ctx.beginPath();
         ctx.arc(0, 0, 36 + Math.sin(state.time * 8) * 3, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (state.blaster > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.34 + Math.sin(state.time * 10) * 0.08;
+        ctx.strokeStyle = "#b967ff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -6, 28 + Math.sin(state.time * 9) * 2, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -810,7 +883,7 @@
       }
       ctx.closePath();
       ctx.fill();
-      if (star.kind === "shield" || star.kind === "magnet") {
+      if (star.kind === "shield" || star.kind === "magnet" || star.kind === "blaster") {
         ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -836,6 +909,27 @@
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      if (rock.hp < 3) {
+        ctx.strokeStyle = rock.hp === 2 ? "#ffd166" : "#ef476f";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-rock.r * 0.3, -rock.r * 0.45);
+        ctx.lineTo(rock.r * 0.06, -rock.r * 0.08);
+        ctx.lineTo(-rock.r * 0.16, rock.r * 0.42);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBullet(bullet) {
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.fillStyle = "#f4d7ff";
+      ctx.shadowColor = "#b967ff";
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.ellipse(0, -3, 4, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
 
@@ -858,6 +952,7 @@
       ctx.globalAlpha = 1;
 
       for (const star of state.stars) drawStar(star);
+      for (const bullet of state.bullets) drawBullet(bullet);
       for (const rock of state.rocks) drawRock(rock);
       for (const spark of state.sparks) {
         ctx.globalAlpha = Math.max(0, spark.life / spark.max);
