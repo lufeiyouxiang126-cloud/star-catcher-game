@@ -839,8 +839,9 @@
       }
       if (state.boss && collide(state.ship, state.boss)) {
         if (state.invincible > 0) {
-          damageBoss(18, "#ffd166");
-          state.ship.y = Math.min(state.height - state.ship.r - 8, state.ship.y + 34);
+          state.shake = Math.max(state.shake, 4);
+          burst(state.ship.x, state.ship.y, "#ffd166", 12);
+          state.ship.y = Math.min(state.height - state.ship.r - 8, state.ship.y + 44);
         } else {
           state.lives -= 1;
           state.combo = 1;
