@@ -400,6 +400,8 @@
       last: 0,
       spawnStar: 0,
       spawnRock: 0,
+      nextPowerAt: 30,
+      nextPowerKind: "shield",
       shake: 0,
       invincible: 0,
       magnet: 0,
@@ -442,6 +444,8 @@
       state.time = 0;
       state.spawnStar = 0;
       state.spawnRock = 0;
+      state.nextPowerAt = 30;
+      state.nextPowerKind = "shield";
       state.shake = 0;
       state.invincible = 0;
       state.magnet = 0;
@@ -552,12 +556,16 @@
       const roll = Math.random();
       let kind = "score";
       let tone = Math.random() > 0.22 ? "gold" : "mint";
-      if (roll < 0.07) {
-        kind = "shield";
-        tone = "red";
-      } else if (roll < 0.15) {
-        kind = "magnet";
-        tone = "blue";
+      if (state.time >= 30) {
+        if (state.time >= state.nextPowerAt) {
+          kind = state.nextPowerKind;
+          state.nextPowerKind = state.nextPowerKind === "shield" ? "magnet" : "shield";
+          state.nextPowerAt = state.time + rand(6, 9);
+        } else if (roll < 0.24) {
+          kind = roll < 0.12 ? "shield" : "magnet";
+        }
+        if (kind === "shield") tone = "red";
+        if (kind === "magnet") tone = "blue";
       }
       state.stars.push({
         x: rand(28, state.width - 28),
