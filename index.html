@@ -106,7 +106,7 @@
     }
 
     .power-pill {
-      min-width: 136px;
+      min-width: 184px;
     }
 
     .power-pill .value {
@@ -305,7 +305,7 @@
       }
 
       .power-pill {
-        min-width: 128px;
+        min-width: 158px;
       }
 
       .value {
@@ -398,6 +398,7 @@
       combo: 1,
       time: 0,
       powerTime: 0,
+      startedAt: 0,
       last: 0,
       spawnStar: 0,
       spawnRock: 0,
@@ -453,7 +454,8 @@
       state.combo = 1;
       state.time = 0;
       state.powerTime = 0;
-      state.last = performance.now();
+      state.startedAt = performance.now();
+      state.last = state.startedAt;
       state.spawnStar = 0;
       state.spawnRock = 0;
       state.nextPowerAt = 15;
@@ -487,6 +489,8 @@
       if (state.invincible > 0) powers.push(`无敌 ${Math.ceil(state.invincible)}s`);
       if (state.magnet > 0) powers.push(`磁力Lv${state.magnetLevel} ${Math.ceil(state.magnet)}s`);
       if (state.blaster > 0) powers.push(`火力Lv${state.blasterLevel} ${Math.ceil(state.blaster)}s`);
+      if (!state.bossSpawned) powers.push(`Boss ${Math.max(0, Math.ceil(state.bossAt - state.powerTime))}s`);
+      if (state.boss) powers.push("Boss战");
       powerEl.textContent = powers.length ? powers.join(" · ") : "普通";
     }
 
@@ -759,8 +763,9 @@
 
     function update(dt) {
       if (!state.running || state.paused) return;
+      const realElapsed = (performance.now() - state.startedAt) / 1000;
       state.time += dt;
-      state.powerTime += dt;
+      state.powerTime = realElapsed;
       state.spawnStar -= dt;
       state.spawnRock -= dt;
       state.shake = Math.max(0, state.shake - dt * 18);
