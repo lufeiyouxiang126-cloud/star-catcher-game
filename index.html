@@ -393,6 +393,7 @@
       paused: false,
       width: 0,
       height: 0,
+      level: 1,
       score: 0,
       lives: 3,
       combo: 1,
@@ -410,15 +411,19 @@
       magnetLevel: 0,
       blaster: 0,
       blasterLevel: 0,
+      weaponMod: "",
+      weaponModTime: 0,
       fireCooldown: 0,
       bossAt: 90,
       bossSpawned: false,
       boss: null,
+      levelBanner: 0,
       ship: { x: 0, y: 0, r: 18, vx: 0, vy: 0 },
       stars: [],
       rocks: [],
       bullets: [],
       bossShots: [],
+      loots: [],
       sparks: [],
       dust: []
     };
@@ -449,6 +454,7 @@
     function reset() {
       state.running = true;
       state.paused = false;
+      state.level = 1;
       state.score = 0;
       state.lives = 3;
       state.combo = 1;
@@ -466,14 +472,18 @@
       state.magnetLevel = 0;
       state.blaster = 0;
       state.blasterLevel = 0;
+      state.weaponMod = "";
+      state.weaponModTime = 0;
       state.fireCooldown = 0;
       state.bossAt = 90;
       state.bossSpawned = false;
       state.boss = null;
+      state.levelBanner = 0;
       state.stars = [];
       state.rocks = [];
       state.bullets = [];
       state.bossShots = [];
+      state.loots = [];
       state.sparks = [];
       state.ship = { x: state.width / 2, y: state.height * 0.72, r: 18, vx: 0, vy: 0 };
       overlay.classList.add("hidden");
@@ -485,10 +495,11 @@
       scoreEl.textContent = state.score;
       livesEl.textContent = state.lives;
       comboEl.textContent = `x${state.combo}`;
-      const powers = [];
+      const powers = [`L${state.level}`];
       if (state.invincible > 0) powers.push(`无敌 ${Math.ceil(state.invincible)}s`);
       if (state.magnet > 0) powers.push(`磁力Lv${state.magnetLevel} ${Math.ceil(state.magnet)}s`);
       if (state.blaster > 0) powers.push(`火力Lv${state.blasterLevel} ${Math.ceil(state.blaster)}s`);
+      if (state.weaponModTime > 0) powers.push(`${state.weaponMod === "homing" ? "追踪" : "霰弹"} ${Math.ceil(state.weaponModTime)}s`);
       if (!state.bossSpawned) powers.push(`Boss ${Math.max(0, Math.ceil(state.bossAt - state.powerTime))}s`);
       if (state.boss) powers.push("Boss战");
       powerEl.textContent = powers.length ? powers.join(" · ") : "普通";
@@ -609,13 +620,16 @@
     }
 
     function spawnRock() {
-      const size = rand(16, 30);
+      const large = state.level >= 2 && Math.random() < 0.36;
+      const size = large ? rand(31, 46) : rand(14, 28);
       state.rocks.push({
         x: rand(size, state.width - size),
         y: -38,
         r: size,
-        hp: 3,
-        speed: rand(118, 178) + state.time * 3.2,
+        hp: large ? 6 : state.level >= 2 ? 3 : 3,
+        maxHp: large ? 6 : state.level >= 2 ? 3 : 3,
+        large,
+        speed: (large ? rand(86, 132) : rand(124, 192)) + state.time * (state.level >= 2 ? 3.8 : 3.2),
         spin: rand(-2.2, 2.2),
         angle: rand(0, Math.PI * 2)
       });
@@ -649,24 +663,76 @@
       return star.tone === "mint" ? "#06d6a0" : "#ffd166";
     }
 
+    function lootColor(type) {
+      if (type === "homing") return "#ff8fab";
+      if (type === "spread") return "#b967ff";
+      if (type === "magnet") return "#4cc9f0";
+      return "#ffd166";
+    }
+
     function destroyRock(rock, color = "#ffd166") {
       rock.destroyed = true;
       state.score += 1000;
       state.shake = Math.max(state.shake, 4);
       burst(rock.x, rock.y, color, 28);
+      if (state.level >= 2 && rock.large && Math.random() < 0.48) {
+        spawnLoot(rock.x, rock.y);
+      }
+      updateHud();
+    }
+
+    function spawnLoot(x, y) {
+      let type = "battery";
+      if (state.blaster > 0) {
+        type = Math.random() < 0.5 ? "homing" : "spread";
+      } else if (state.magnet > 0 && Math.random() < 0.62) {
+        type = "magnet";
+      }
+      state.loots.push({
+        x,
+        y,
+        r: 13,
+        type,
+        speed: 78,
+        spin: rand(0, Math.PI * 2)
+      });
+    }
+
+    function collectLoot(loot) {
+      if (loot.type === "homing") {
+        state.blaster = Math.max(state.blaster, 10) + 6;
+        state.blasterLevel = Math.max(2, state.blasterLevel);
+        state.weaponMod = "homing";
+        state.weaponModTime = 12;
+      } else if (loot.type === "spread") {
+        state.blaster = Math.max(state.blaster, 10) + 6;
+        state.blasterLevel = 3;
+        state.weaponMod = "spread";
+        state.weaponModTime = 12;
+      } else if (loot.type === "magnet") {
+        state.magnet = Math.max(state.magnet, 10) + 7;
+        state.magnetLevel = 3;
+      } else {
+        if (state.invincible > 0) state.invincible += 5;
+        if (state.magnet > 0) state.magnet += 5;
+        if (state.blaster > 0) state.blaster += 5;
+        if (state.invincible <= 0 && state.magnet <= 0 && state.blaster <= 0) state.score += 500;
+      }
+      burst(loot.x, loot.y, lootColor(loot.type), 18);
       updateHud();
     }
 
     function spawnBoss() {
       state.bossSpawned = true;
+      const isSecond = state.level >= 2;
       state.boss = {
         x: state.width / 2,
-        y: 92,
-        r: 58,
-        hp: 260,
-        maxHp: 260,
-        vx: 120,
-        shot: 0.8
+        y: isSecond ? 108 : 92,
+        r: isSecond ? 72 : 58,
+        hp: isSecond ? 620 : 260,
+        maxHp: isSecond ? 620 : 260,
+        vx: isSecond ? 168 : 120,
+        shot: isSecond ? 0.58 : 0.8
       };
       burst(state.boss.x, state.boss.y, "#b967ff", 42);
     }
@@ -677,25 +743,47 @@
       state.shake = Math.max(state.shake, 2);
       burst(state.boss.x + rand(-28, 28), state.boss.y + rand(-18, 24), color, 8);
       if (state.boss.hp <= 0) {
-        state.score += 5000;
+        state.score += state.level >= 2 ? 9000 : 5000;
         burst(state.boss.x, state.boss.y, "#ffd166", 70);
         state.boss = null;
-        winGame();
+        if (state.level === 1) {
+          startLevelTwo();
+        } else {
+          winGame();
+        }
       }
+      updateHud();
+    }
+
+    function startLevelTwo() {
+      state.level = 2;
+      state.lives = Math.min(5, state.lives + 1);
+      state.bossSpawned = false;
+      state.bossAt = state.powerTime + 65;
+      state.nextPowerAt = state.powerTime + 9;
+      state.powerStep = 0;
+      state.rocks = [];
+      state.bossShots = [];
+      state.bullets = [];
+      state.loots = [];
+      state.levelBanner = 5;
+      state.spawnRock = 0.8;
+      state.spawnStar = 0.8;
+      burst(state.ship.x, state.ship.y, "#4cc9f0", 36);
       updateHud();
     }
 
     function spawnBossShot() {
       if (!state.boss) return;
-      const spread = Math.min(5, 3 + Math.floor(state.time / 40));
+      const spread = state.level >= 2 ? Math.min(7, 5 + Math.floor(state.time / 55)) : Math.min(5, 3 + Math.floor(state.time / 40));
       for (let i = 0; i < spread; i++) {
-        const offset = (i - (spread - 1) / 2) * 18;
+        const offset = (i - (spread - 1) / 2) * (state.level >= 2 ? 16 : 18);
         state.bossShots.push({
           x: state.boss.x + offset,
           y: state.boss.y + 44,
-          vx: offset * 1.8,
-          vy: 205 + state.time * 0.9,
-          r: 7
+          vx: offset * (state.level >= 2 ? 2.4 : 1.8),
+          vy: (state.level >= 2 ? 238 : 205) + state.time * 0.9,
+          r: state.level >= 2 ? 8 : 7
         });
       }
     }
@@ -747,16 +835,19 @@
 
     function shootBullet() {
       const level = Math.max(1, state.blasterLevel);
-      const offsets = level === 1 ? [0] : level === 2 ? [-7, 7] : [-11, 0, 11];
+      const spreadMode = state.weaponMod === "spread";
+      const homingMode = state.weaponMod === "homing";
+      const offsets = spreadMode ? [-24, -12, 0, 12, 24] : level === 1 ? [0] : level === 2 ? [-7, 7] : [-11, 0, 11];
       for (const offset of offsets) {
         state.bullets.push({
           x: state.ship.x + offset,
           y: state.ship.y - 26,
-          vx: offset * 2.5,
+          vx: offset * (spreadMode ? 5.2 : 2.5),
           vy: -680 - level * 70,
           r: 4 + level * 0.6,
-          damage: level >= 3 ? 2 : 1,
-          level
+          damage: homingMode ? 2 : level >= 3 ? 2 : 1,
+          level,
+          homing: homingMode
         });
       }
     }
@@ -772,9 +863,12 @@
       state.invincible = Math.max(0, state.invincible - dt);
       state.magnet = Math.max(0, state.magnet - dt);
       state.blaster = Math.max(0, state.blaster - dt);
+      state.weaponModTime = Math.max(0, state.weaponModTime - dt);
       state.fireCooldown = Math.max(0, state.fireCooldown - dt);
       if (state.magnet <= 0) state.magnetLevel = 0;
       if (state.blaster <= 0) state.blasterLevel = 0;
+      if (state.weaponModTime <= 0) state.weaponMod = "";
+      state.levelBanner = Math.max(0, state.levelBanner - dt);
       updateHud();
       if (!state.bossSpawned && state.powerTime >= state.bossAt) {
         spawnBoss();
@@ -790,7 +884,7 @@
       }
       if (state.spawnRock <= 0) {
         spawnRock();
-        state.spawnRock = state.boss ? 1.45 : Math.max(0.42, 1.28 - state.time * 0.014);
+        state.spawnRock = state.boss ? (state.level >= 2 ? 1.05 : 1.45) : Math.max(state.level >= 2 ? 0.34 : 0.42, 1.28 - state.time * (state.level >= 2 ? 0.018 : 0.014));
       }
       moveShip(dt);
       if (state.blaster > 0 && state.fireCooldown <= 0) {
@@ -825,6 +919,10 @@
         rock.y += rock.speed * dt;
         rock.angle += rock.spin * dt;
       }
+      for (const loot of state.loots) {
+        loot.y += loot.speed * dt;
+        loot.spin += dt * 4.8;
+      }
       if (state.boss) {
         state.boss.x += state.boss.vx * dt;
         if (state.boss.x < state.boss.r + 18 || state.boss.x > state.width - state.boss.r - 18) {
@@ -853,6 +951,22 @@
         }
       }
       for (const bullet of state.bullets) {
+        if (bullet.homing) {
+          const targets = state.boss ? [state.boss] : state.rocks.filter((rock) => !rock.destroyed);
+          let target = null;
+          let best = Infinity;
+          for (const item of targets) {
+            const d = Math.hypot(item.x - bullet.x, item.y - bullet.y);
+            if (d < best) {
+              best = d;
+              target = item;
+            }
+          }
+          if (target && best > 1) {
+            bullet.vx += ((target.x - bullet.x) / best) * 560 * dt;
+            bullet.vy += ((target.y - bullet.y) / best) * 260 * dt;
+          }
+        }
         bullet.x += (bullet.vx || 0) * dt;
         bullet.y += bullet.vy * dt;
       }
@@ -898,6 +1012,14 @@
           return false;
         }
         return true;
+      });
+
+      state.loots = state.loots.filter((loot) => {
+        if (collide(state.ship, loot)) {
+          collectLoot(loot);
+          return false;
+        }
+        return loot.y < state.height + 44;
       });
 
       state.rocks = state.rocks.filter((rock) => {
@@ -1029,9 +1151,9 @@
       ctx.save();
       ctx.translate(rock.x, rock.y);
       ctx.rotate(rock.angle);
-      ctx.fillStyle = "#7b8491";
-      ctx.strokeStyle = "#c0c7d1";
-      ctx.lineWidth = 2;
+      ctx.fillStyle = rock.large ? "#596271" : "#7b8491";
+      ctx.strokeStyle = rock.large ? "#ffd166" : "#c0c7d1";
+      ctx.lineWidth = rock.large ? 3 : 2;
       ctx.beginPath();
       for (let i = 0; i < 9; i++) {
         const angle = i * Math.PI * 2 / 9;
@@ -1050,6 +1172,27 @@
         ctx.lineTo(-rock.r * 0.16, rock.r * 0.42);
         ctx.stroke();
       }
+      ctx.restore();
+    }
+
+    function drawLoot(loot) {
+      ctx.save();
+      ctx.translate(loot.x, loot.y);
+      ctx.rotate(loot.spin);
+      const color = lootColor(loot.type);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.86)";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -loot.r);
+      ctx.lineTo(loot.r, 0);
+      ctx.lineTo(0, loot.r);
+      ctx.lineTo(-loot.r, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -1100,15 +1243,15 @@
       ctx.fillStyle = "#f7fbff";
       ctx.font = "700 12px Segoe UI, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("第一关 BOSS", state.width / 2, y - 8);
+      ctx.fillText(state.level >= 2 ? "第二关 BOSS" : "第一关 BOSS", state.width / 2, y - 8);
       ctx.restore();
     }
 
     function drawBullet(bullet) {
       ctx.save();
       ctx.translate(bullet.x, bullet.y);
-      ctx.fillStyle = bullet.level >= 3 ? "#ffffff" : "#f4d7ff";
-      ctx.shadowColor = "#b967ff";
+      ctx.fillStyle = bullet.homing ? "#ff8fab" : bullet.level >= 3 ? "#ffffff" : "#f4d7ff";
+      ctx.shadowColor = bullet.homing ? "#ff8fab" : "#b967ff";
       ctx.shadowBlur = 12 + bullet.level * 5;
       ctx.beginPath();
       ctx.ellipse(0, -3, bullet.r, 10 + bullet.level * 3, 0, 0, Math.PI * 2);
@@ -1147,6 +1290,7 @@
       ctx.globalAlpha = 1;
 
       for (const star of state.stars) drawStar(star);
+      for (const loot of state.loots) drawLoot(loot);
       for (const bullet of state.bullets) drawBullet(bullet);
       for (const rock of state.rocks) drawRock(rock);
       drawBoss();
@@ -1160,6 +1304,18 @@
       }
       ctx.globalAlpha = 1;
       drawShip();
+      if (state.levelBanner > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, state.levelBanner / 1.2);
+        ctx.fillStyle = "#f7fbff";
+        ctx.font = "800 32px Segoe UI, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("第二关", state.width / 2, state.height * 0.42);
+        ctx.font = "700 15px Segoe UI, system-ui, sans-serif";
+        ctx.fillStyle = "#b7c7d6";
+        ctx.fillText("大石头会掉装备，Boss 更凶", state.width / 2, state.height * 0.42 + 30);
+        ctx.restore();
+      }
       ctx.restore();
     }
 
@@ -1194,11 +1350,11 @@
     function winGame() {
       state.running = false;
       overlay.classList.remove("hidden");
-      message.textContent = `第一关通过！最终得分 ${state.score}。正在提交全网排行榜。`;
+      message.textContent = `第二关通过！最终得分 ${state.score}。正在提交全网排行榜。`;
       startButton.textContent = "再玩一次";
       pauseButton.textContent = "暂停";
       saveRank(state.score).then(() => {
-        message.textContent = `第一关通过！最终得分 ${state.score}。Boss 已击破。`;
+        message.textContent = `第二关通过！最终得分 ${state.score}。两个 Boss 都已击破。`;
       });
     }
 
