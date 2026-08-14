@@ -397,6 +397,7 @@
       lives: 3,
       combo: 1,
       time: 0,
+      powerTime: 0,
       last: 0,
       spawnStar: 0,
       spawnRock: 0,
@@ -445,6 +446,7 @@
       state.lives = 3;
       state.combo = 1;
       state.time = 0;
+      state.powerTime = 0;
       state.last = performance.now();
       state.spawnStar = 0;
       state.spawnRock = 0;
@@ -574,14 +576,10 @@
       return ["shield", "magnet", "blaster"][state.powerStep % 3];
     }
 
-    function spawnStar() {
-      let kind = "score";
+    function spawnStar(kind = "score") {
       let tone = Math.random() > 0.22 ? "gold" : "mint";
-      if (state.time >= state.nextPowerAt) {
-        kind = scheduledPowerKind();
+      if (kind !== "score") {
         tone = powerTone(kind);
-        state.powerStep += 1;
-        state.nextPowerAt += 5;
       }
       state.stars.push({
         x: rand(28, state.width - 28),
@@ -698,6 +696,7 @@
     function update(dt) {
       if (!state.running || state.paused) return;
       state.time += dt;
+      state.powerTime += dt;
       state.spawnStar -= dt;
       state.spawnRock -= dt;
       state.shake = Math.max(0, state.shake - dt * 18);
@@ -706,9 +705,14 @@
       state.blaster = Math.max(0, state.blaster - dt);
       state.fireCooldown = Math.max(0, state.fireCooldown - dt);
       updateHud();
+      while (state.powerTime >= state.nextPowerAt) {
+        spawnStar(scheduledPowerKind());
+        state.powerStep += 1;
+        state.nextPowerAt += 5;
+      }
       if (state.spawnStar <= 0) {
         spawnStar();
-        state.spawnStar = Math.max(0.22, 0.72 - state.time * 0.012);
+        state.spawnStar = Math.max(0.72, 1.25 - state.time * 0.005);
       }
       if (state.spawnRock <= 0) {
         spawnRock();
