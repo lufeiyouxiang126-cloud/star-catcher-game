@@ -180,6 +180,12 @@
       text-align: center;
     }
 
+    .card-language {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 12px;
+    }
+
     h1 {
       margin: 0 0 10px;
       font-size: clamp(30px, 6vw, 58px);
@@ -448,12 +454,15 @@
         </div>
       </div>
       <div class="actions">
-        <button class="button lang-button" id="language" type="button" aria-label="Switch language">EN</button>
+        <button class="button lang-button language-toggle" id="language" type="button" aria-label="Switch language">EN</button>
         <button class="button" id="pause" type="button" aria-label="暂停或继续游戏">暂停</button>
       </div>
     </section>
     <section class="overlay" id="overlay">
       <div class="card">
+        <div class="card-language">
+          <button class="button lang-button language-toggle" id="overlayLanguage" type="button" aria-label="Switch language">EN</button>
+        </div>
         <h1 id="title">星际拾光者</h1>
         <p id="message">驾驶小飞船收集星光，躲开陨石。连击越高，分数越香。</p>
         <button class="button primary" id="start" type="button">开始游戏</button>
@@ -485,7 +494,7 @@
     const message = document.querySelector("#message");
     const startButton = document.querySelector("#start");
     const pauseButton = document.querySelector("#pause");
-    const languageButton = document.querySelector("#language");
+    const languageButtons = document.querySelectorAll(".language-toggle");
     const rankList = document.querySelector("#rankList");
     const refreshRanksButton = document.querySelector("#refreshRanks");
     const playerNameInput = document.querySelector("#playerName");
@@ -669,8 +678,10 @@
       nameLabel.textContent = text("nickname");
       playerNameInput.setAttribute("aria-label", text("nicknameLabel"));
       tipsEl.textContent = text("tips");
-      languageButton.textContent = text("switchLanguage");
-      languageButton.setAttribute("aria-label", text("switchLanguageLabel"));
+      languageButtons.forEach((button) => {
+        button.textContent = text("switchLanguage");
+        button.setAttribute("aria-label", text("switchLanguageLabel"));
+      });
       pauseButton.textContent = state.paused ? text("continue") : text("pause");
       if (state.screen === "intro") {
         message.textContent = text("intro");
@@ -1663,7 +1674,7 @@
       }
     });
     pauseButton.addEventListener("click", togglePause);
-    languageButton.addEventListener("click", () => {
+    languageButtons.forEach((button) => button.addEventListener("click", () => {
       language = language === "zh" ? "en" : "zh";
       try {
         localStorage.setItem(languageKey, language);
@@ -1672,7 +1683,7 @@
       }
       applyLanguage();
       renderRanks();
-    });
+    }));
     refreshRanksButton.addEventListener("click", renderRanks);
     playerNameInput.addEventListener("change", getPlayerName);
 
