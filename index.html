@@ -80,6 +80,12 @@
       pointer-events: none;
     }
 
+    .actions {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
     .stats {
       display: grid;
       grid-template-columns: repeat(5, minmax(74px, auto));
@@ -134,6 +140,10 @@
       font: inherit;
       font-weight: 750;
       cursor: pointer;
+    }
+
+    .lang-button {
+      min-width: 54px;
     }
 
     .button:hover,
@@ -341,6 +351,15 @@
         padding: 9px 10px;
       }
 
+      .actions {
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .lang-button {
+        min-width: 58px;
+      }
+
       .card {
         width: min(94vw, 430px);
         padding: 18px;
@@ -408,45 +427,48 @@
     <section class="hud" aria-live="polite">
       <div class="stats">
         <div class="pill">
-          <span class="label">分数</span>
+          <span class="label" id="scoreLabel">分数</span>
           <span class="value" id="score">0</span>
         </div>
         <div class="pill">
-          <span class="label">生命</span>
+          <span class="label" id="livesLabel">生命</span>
           <span class="value" id="lives">3</span>
         </div>
         <div class="pill">
-          <span class="label">连击</span>
+          <span class="label" id="comboLabel">连击</span>
           <span class="value" id="combo">x1</span>
         </div>
         <div class="pill">
-          <span class="label">最高</span>
+          <span class="label" id="bestLabel">最高</span>
           <span class="value" id="best">0</span>
         </div>
         <div class="pill power-pill">
-          <span class="label">状态</span>
+          <span class="label" id="powerLabel">状态</span>
           <span class="value" id="power">普通</span>
         </div>
       </div>
-      <button class="button" id="pause" type="button" aria-label="暂停或继续游戏">暂停</button>
+      <div class="actions">
+        <button class="button lang-button" id="language" type="button" aria-label="Switch language">EN</button>
+        <button class="button" id="pause" type="button" aria-label="暂停或继续游戏">暂停</button>
+      </div>
     </section>
     <section class="overlay" id="overlay">
       <div class="card">
-        <h1>星际拾光者</h1>
+        <h1 id="title">星际拾光者</h1>
         <p id="message">驾驶小飞船收集星光，躲开陨石。连击越高，分数越香。</p>
         <button class="button primary" id="start" type="button">开始游戏</button>
         <div class="leaderboard" aria-label="全网排行榜">
           <div class="leaderboard-title">
-            <span>全网排行榜</span>
+            <span id="leaderboardTitle">全网排行榜</span>
             <button class="mini-button" id="refreshRanks" type="button">刷新</button>
           </div>
           <label class="name-field">
-            <span>昵称</span>
+            <span id="nameLabel">昵称</span>
             <input id="playerName" maxlength="16" autocomplete="nickname" aria-label="排行榜昵称" />
           </label>
           <ol class="rank-list" id="rankList"></ol>
         </div>
-        <div class="tips">方向键 / WASD 移动，空格暂停。手机上拖动飞船即可。</div>
+        <div class="tips" id="tips">方向键 / WASD 移动，空格暂停。手机上拖动飞船即可。</div>
       </div>
     </section>
   </main>
@@ -463,17 +485,134 @@
     const message = document.querySelector("#message");
     const startButton = document.querySelector("#start");
     const pauseButton = document.querySelector("#pause");
+    const languageButton = document.querySelector("#language");
     const rankList = document.querySelector("#rankList");
     const refreshRanksButton = document.querySelector("#refreshRanks");
     const playerNameInput = document.querySelector("#playerName");
+    const leaderboardPanel = document.querySelector(".leaderboard");
+    const titleEl = document.querySelector("#title");
+    const scoreLabel = document.querySelector("#scoreLabel");
+    const livesLabel = document.querySelector("#livesLabel");
+    const comboLabel = document.querySelector("#comboLabel");
+    const bestLabel = document.querySelector("#bestLabel");
+    const powerLabel = document.querySelector("#powerLabel");
+    const leaderboardTitle = document.querySelector("#leaderboardTitle");
+    const nameLabel = document.querySelector("#nameLabel");
+    const tipsEl = document.querySelector("#tips");
 
     const leaderboardApi = "https://star-catcher-game.lingz20581.chatgpt.site/api/leaderboard";
     const playerNameKey = "star-catcher-player-name-v1";
+    const languageKey = "star-catcher-language-v1";
+    const i18n = {
+      zh: {
+        lang: "zh-CN",
+        appLabel: "星际拾光者网页小游戏",
+        pauseLabel: "暂停或继续游戏",
+        title: "星际拾光者",
+        intro: "驾驶小飞船收集星光，躲开陨石。连击越高，分数越香。",
+        start: "开始游戏",
+        resume: "继续游戏",
+        replay: "再玩一次",
+        pause: "暂停",
+        continue: "继续",
+        switchLanguage: "EN",
+        switchLanguageLabel: "Switch language to English",
+        score: "分数",
+        lives: "生命",
+        combo: "连击",
+        best: "最高",
+        status: "状态",
+        normal: "普通",
+        invincible: "无敌",
+        magnet: "磁力",
+        blaster: "火力",
+        permanent: "永久",
+        homing: "追踪",
+        spread: "霰弹",
+        bossBattle: "Boss战",
+        leaderboard: "全网排行榜",
+        refresh: "刷新",
+        nickname: "昵称",
+        nicknameLabel: "排行榜昵称",
+        tips: "方向键 / WASD 移动，空格暂停。手机上拖动飞船即可。",
+        noScores: "还没有成绩",
+        playOne: "开一局",
+        syncing: "正在同步全网榜...",
+        wait: "稍等",
+        rankUnavailable: "全网排行榜暂时连接失败",
+        submitFailed: "成绩提交失败，稍后再试",
+        playerPrefix: "玩家",
+        paused: "暂停中。休息好再继续冲分。",
+        losingSubmit: (score) => `挑战失败，本局得分 ${score}。正在提交全网排行榜。`,
+        losingDone: (score) => `挑战失败，本局得分 ${score}。调整节奏，再来一次。`,
+        winningSubmit: (score) => `第二关通过！最终得分 ${score}。正在提交全网排行榜。`,
+        winningDone: (score) => `第二关通过！最终得分 ${score}。两个 Boss 都已击破。`,
+        secondLevel: "第二关",
+        secondLevelHint: "大石头会掉装备，Boss 更凶",
+        firstBoss: "第一关 BOSS",
+        secondBoss: "第二关 BOSS"
+      },
+      en: {
+        lang: "en",
+        appLabel: "Star Catcher browser game",
+        pauseLabel: "Pause or resume the game",
+        title: "Star Catcher",
+        intro: "Pilot your little ship, collect starlight, and dodge asteroids. Higher combos mean richer scores.",
+        start: "Start",
+        resume: "Resume",
+        replay: "Play Again",
+        pause: "Pause",
+        continue: "Resume",
+        switchLanguage: "中文",
+        switchLanguageLabel: "切换到中文",
+        score: "Score",
+        lives: "Lives",
+        combo: "Combo",
+        best: "Best",
+        status: "Status",
+        normal: "Normal",
+        invincible: "Shield",
+        magnet: "Magnet",
+        blaster: "Blaster",
+        permanent: "Permanent",
+        homing: "Homing",
+        spread: "Spread",
+        bossBattle: "Boss Fight",
+        leaderboard: "Global Leaderboard",
+        refresh: "Refresh",
+        nickname: "Name",
+        nicknameLabel: "Leaderboard name",
+        tips: "Move with Arrow Keys / WASD, pause with Space. On mobile, drag the ship.",
+        noScores: "No scores yet",
+        playOne: "Play one",
+        syncing: "Syncing global board...",
+        wait: "Wait",
+        rankUnavailable: "Global leaderboard is unavailable",
+        submitFailed: "Score submit failed. Try again later.",
+        playerPrefix: "Player",
+        paused: "Paused. Take a breath, then chase the next score.",
+        losingSubmit: (score) => `Mission failed. Score: ${score}. Submitting to the global leaderboard.`,
+        losingDone: (score) => `Mission failed. Score: ${score}. Tune your rhythm and try again.`,
+        winningSubmit: (score) => `Level 2 cleared! Final score: ${score}. Submitting to the global leaderboard.`,
+        winningDone: (score) => `Level 2 cleared! Final score: ${score}. Both bosses are down.`,
+        secondLevel: "Level 2",
+        secondLevelHint: "Large asteroids drop gear. The boss hits harder.",
+        firstBoss: "Level 1 Boss",
+        secondBoss: "Level 2 Boss"
+      }
+    };
+    let language = "zh";
+
+    function text(key, ...args) {
+      const value = i18n[language][key] ?? i18n.zh[key] ?? key;
+      return typeof value === "function" ? value(...args) : value;
+    }
 
     const keys = new Set();
     const state = {
       running: false,
       paused: false,
+      screen: "intro",
       width: 0,
       height: 0,
       level: 1,
@@ -513,6 +652,42 @@
       dust: []
     };
 
+    function applyLanguage() {
+      document.documentElement.lang = text("lang");
+      document.title = text("title");
+      document.querySelector(".game").setAttribute("aria-label", text("appLabel"));
+      pauseButton.setAttribute("aria-label", text("pauseLabel"));
+      leaderboardPanel.setAttribute("aria-label", text("leaderboard"));
+      titleEl.textContent = text("title");
+      scoreLabel.textContent = text("score");
+      livesLabel.textContent = text("lives");
+      comboLabel.textContent = text("combo");
+      bestLabel.textContent = text("best");
+      powerLabel.textContent = text("status");
+      leaderboardTitle.textContent = text("leaderboard");
+      refreshRanksButton.textContent = text("refresh");
+      nameLabel.textContent = text("nickname");
+      playerNameInput.setAttribute("aria-label", text("nicknameLabel"));
+      tipsEl.textContent = text("tips");
+      languageButton.textContent = text("switchLanguage");
+      languageButton.setAttribute("aria-label", text("switchLanguageLabel"));
+      pauseButton.textContent = state.paused ? text("continue") : text("pause");
+      if (state.screen === "intro") {
+        message.textContent = text("intro");
+        startButton.textContent = text("start");
+      } else if (state.paused) {
+        message.textContent = text("paused");
+        startButton.textContent = text("resume");
+      } else if (state.screen === "lost") {
+        message.textContent = text("losingDone", state.score);
+        startButton.textContent = text("replay");
+      } else if (state.screen === "won") {
+        message.textContent = text("winningDone", state.score);
+        startButton.textContent = text("replay");
+      }
+      updateHud();
+    }
+
     function resize() {
       const rect = canvas.parentElement.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
@@ -539,6 +714,7 @@
     function reset() {
       state.running = true;
       state.paused = false;
+      state.screen = "playing";
       state.level = 1;
       state.score = 0;
       state.lives = 3;
@@ -574,7 +750,7 @@
       state.sparks = [];
       state.ship = { x: state.width / 2, y: state.height * 0.72, r: 18, vx: 0, vy: 0 };
       overlay.classList.add("hidden");
-      pauseButton.textContent = "暂停";
+      pauseButton.textContent = text("pause");
       updateHud();
     }
 
@@ -583,22 +759,22 @@
       livesEl.textContent = state.lives;
       comboEl.textContent = `x${state.combo}`;
       const powers = [`L${state.level}`];
-      if (state.invincible > 0) powers.push(`无敌 ${Math.ceil(state.invincible)}s`);
-      if (state.magnet > 0) powers.push(`磁力Lv${state.magnetLevel} ${Math.ceil(state.magnet)}s`);
+      if (state.invincible > 0) powers.push(`${text("invincible")} ${Math.ceil(state.invincible)}s`);
+      if (state.magnet > 0) powers.push(`${text("magnet")} Lv${state.magnetLevel} ${Math.ceil(state.magnet)}s`);
       if (state.blasterPermanent || state.blaster > 0) {
-        powers.push(`火力Lv${state.blasterLevel} ${state.blasterPermanent ? "永久" : `${Math.ceil(state.blaster)}s`}`);
+        powers.push(`${text("blaster")} Lv${state.blasterLevel} ${state.blasterPermanent ? text("permanent") : `${Math.ceil(state.blaster)}s`}`);
       }
       if (state.weaponMod && (state.weaponModPermanent || state.weaponModTime > 0)) {
-        powers.push(`${state.weaponMod === "homing" ? "追踪" : "霰弹"} ${state.weaponModPermanent ? "永久" : `${Math.ceil(state.weaponModTime)}s`}`);
+        powers.push(`${state.weaponMod === "homing" ? text("homing") : text("spread")} ${state.weaponModPermanent ? text("permanent") : `${Math.ceil(state.weaponModTime)}s`}`);
       }
       if (!state.bossSpawned) powers.push(`Boss ${Math.max(0, Math.ceil(state.bossAt - state.powerTime))}s`);
-      if (state.boss) powers.push("Boss战");
-      powerEl.textContent = powers.length ? powers.join(" · ") : "普通";
+      if (state.boss) powers.push(text("bossBattle"));
+      powerEl.textContent = powers.length ? powers.join(" · ") : text("normal");
     }
 
     function getPlayerName() {
       const value = playerNameInput.value.trim().replace(/\s+/g, " ").slice(0, 16);
-      const name = value || `玩家${Math.floor(Math.random() * 9000 + 1000)}`;
+      const name = value || `${text("playerPrefix")}${Math.floor(Math.random() * 9000 + 1000)}`;
       playerNameInput.value = name;
       try {
         localStorage.setItem(playerNameKey, name);
@@ -625,11 +801,11 @@
       }[char]));
     }
 
-    function paintRanks(ranks, fallbackText = "还没有成绩") {
+    function paintRanks(ranks, fallbackText = text("noScores")) {
       rankList.innerHTML = "";
       if (ranks.length === 0) {
         const empty = document.createElement("li");
-        empty.innerHTML = `<span>#</span><span>${fallbackText}</span><span class="rank-date">开一局</span>`;
+        empty.innerHTML = `<span>#</span><span>${fallbackText}</span><span class="rank-date">${text("playOne")}</span>`;
         rankList.append(empty);
         bestEl.textContent = "0";
         return;
@@ -637,7 +813,7 @@
       ranks.forEach((rank, index) => {
         const item = document.createElement("li");
         const date = rank.created_at ? String(rank.created_at).slice(5, 10) : "";
-        const name = escapeHtml(String(rank.name || "匿名玩家").slice(0, 16));
+        const name = escapeHtml(String(rank.name || text("playerPrefix")).slice(0, 16));
         item.innerHTML = `
           <span>#${index + 1}</span>
           <span><strong class="rank-score">${rank.score}</strong> ${name}</span>
@@ -649,11 +825,11 @@
     }
 
     async function renderRanks() {
-      rankList.innerHTML = "<li><span>#</span><span>正在同步全网榜...</span><span class=\"rank-date\">稍等</span></li>";
+      rankList.innerHTML = `<li><span>#</span><span>${text("syncing")}</span><span class="rank-date">${text("wait")}</span></li>`;
       try {
         paintRanks(await fetchRanks());
       } catch {
-        paintRanks([], "全网排行榜暂时连接失败");
+        paintRanks([], text("rankUnavailable"));
       }
     }
 
@@ -672,7 +848,7 @@
         const data = await response.json();
         paintRanks(Array.isArray(data.scores) ? data.scores : []);
       } catch {
-        paintRanks([], "成绩提交失败，稍后再试");
+        paintRanks([], text("submitFailed"));
       }
     }
 
@@ -1343,7 +1519,7 @@
       ctx.fillStyle = "#f7fbff";
       ctx.font = "700 12px Segoe UI, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(state.level >= 2 ? "第二关 BOSS" : "第一关 BOSS", state.width / 2, y - 8);
+      ctx.fillText(state.level >= 2 ? text("secondBoss") : text("firstBoss"), state.width / 2, y - 8);
       ctx.restore();
     }
 
@@ -1410,10 +1586,10 @@
         ctx.fillStyle = "#f7fbff";
         ctx.font = "800 32px Segoe UI, system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("第二关", state.width / 2, state.height * 0.42);
+        ctx.fillText(text("secondLevel"), state.width / 2, state.height * 0.42);
         ctx.font = "700 15px Segoe UI, system-ui, sans-serif";
         ctx.fillStyle = "#b7c7d6";
-        ctx.fillText("大石头会掉装备，Boss 更凶", state.width / 2, state.height * 0.42 + 30);
+        ctx.fillText(text("secondLevelHint"), state.width / 2, state.height * 0.42 + 30);
         ctx.restore();
       }
       ctx.restore();
@@ -1430,31 +1606,36 @@
     function togglePause() {
       if (!state.running) return;
       state.paused = !state.paused;
-      pauseButton.textContent = state.paused ? "继续" : "暂停";
+      state.screen = state.paused ? "paused" : "playing";
+      pauseButton.textContent = state.paused ? text("continue") : text("pause");
       overlay.classList.toggle("hidden", !state.paused);
-      message.textContent = "暂停中。休息好再继续冲分。";
-      startButton.textContent = "继续游戏";
+      if (state.paused) {
+        message.textContent = text("paused");
+        startButton.textContent = text("resume");
+      }
     }
 
     function endGame() {
       state.running = false;
+      state.screen = "lost";
       overlay.classList.remove("hidden");
-      message.textContent = `挑战失败，本局得分 ${state.score}。正在提交全网排行榜。`;
-      startButton.textContent = "再玩一次";
-      pauseButton.textContent = "暂停";
+      message.textContent = text("losingSubmit", state.score);
+      startButton.textContent = text("replay");
+      pauseButton.textContent = text("pause");
       saveRank(state.score).then(() => {
-        message.textContent = `挑战失败，本局得分 ${state.score}。调整节奏，再来一次。`;
+        message.textContent = text("losingDone", state.score);
       });
     }
 
     function winGame() {
       state.running = false;
+      state.screen = "won";
       overlay.classList.remove("hidden");
-      message.textContent = `第二关通过！最终得分 ${state.score}。正在提交全网排行榜。`;
-      startButton.textContent = "再玩一次";
-      pauseButton.textContent = "暂停";
+      message.textContent = text("winningSubmit", state.score);
+      startButton.textContent = text("replay");
+      pauseButton.textContent = text("pause");
       saveRank(state.score).then(() => {
-        message.textContent = `第二关通过！最终得分 ${state.score}。两个 Boss 都已击破。`;
+        message.textContent = text("winningDone", state.score);
       });
     }
 
@@ -1482,14 +1663,27 @@
       }
     });
     pauseButton.addEventListener("click", togglePause);
+    languageButton.addEventListener("click", () => {
+      language = language === "zh" ? "en" : "zh";
+      try {
+        localStorage.setItem(languageKey, language);
+      } catch {
+        // Language switching still works for the current session.
+      }
+      applyLanguage();
+      renderRanks();
+    });
     refreshRanksButton.addEventListener("click", renderRanks);
     playerNameInput.addEventListener("change", getPlayerName);
 
     try {
+      language = localStorage.getItem(languageKey) === "en" ? "en" : "zh";
       playerNameInput.value = localStorage.getItem(playerNameKey) || "";
     } catch {
+      language = "zh";
       playerNameInput.value = "";
     }
+    applyLanguage();
     getPlayerName();
 
     resize();
